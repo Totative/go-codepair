@@ -37,3 +37,18 @@ jobs:
           fuzz-seconds: 300
           mode: code-change
           sanitizer: ${{ matrix.sanitizer }}
+
+  # One required check for branch protection: a matrix leg that never ran reads as not failing rather than not run.
+  all-checks:
+    if: always()
+    needs: [PR]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Fail if any check did not succeed
+        run: |
+          if [ "${{ needs.PR.result }}" != "success" ]; then
+            echo "PR=${{ needs.PR.result }}"
+            exit 1
+          fi
+          echo "all checks passed"
