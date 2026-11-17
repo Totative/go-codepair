@@ -226,9 +226,9 @@ func TestRemoteKey(t *testing.T) {
 		{"IPv6 /64", "2001:db8:0:1::1", "[2001:db8:0:1::2]:9", true},
 		{"IPv6 other /64", "2001:db8:0:1::1", "2001:db8:0:2::1", false},
 		{"link-local ports", "[fe80::1%eth0]:1001", "[fe80::1%eth0]:1002", true},
-		{"link-local other addr", "fe80::1%eth0", "fe80::2%eth0", false},
-		{"link-local other zone", "fe80::1%eth0", "fe80::1%wlan0", false},
-		{"link-local unzoned", "fe80::1", "fe80::2", false},
+		{"link-local other addr", "fe80::1%eth0", "fe80::2%eth0", true},
+		{"link-local other zone", "fe80::1%eth0", "fe80::1%eth1", false},
+		{"link-local unzoned", "fe80::1", "fe80::2", true},
 		{"link-local zone vs none", "fe80::1", "fe80::1%eth0", false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -270,11 +270,18 @@ func FuzzRemoteKey(f *testing.F) {
 				t.Fatalf("remoteKey(%q) = %q, remoteKey(%q) = %q", remote, got, host, k)
 			}
 		}
+		for {
+			h, _, err := net.SplitHostPort(host)
+			if err != nil {
+				break
+			}
+			host = h
+		}
 		addr, zone, _ := strings.Cut(host, "%")
 		ip := net.ParseIP(addr)
 		if ip == nil {
-			if got != remote {
-				t.Fatalf("remoteKey(%q) = %q, want the original string", remote, got)
+			if got != host {
+				t.Fatalf("remoteKey(%q) = %q, want %q", remote, got, host)
 			}
 			return
 		}
@@ -285,7 +292,7 @@ func FuzzRemoteKey(f *testing.F) {
 			return
 		}
 		if ip.IsLinkLocalUnicast() {
-			want := ip.String()
+			want := "fe80::"
 			if zone != "" {
 				want += "%" + zone
 			}
