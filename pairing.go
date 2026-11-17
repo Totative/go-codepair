@@ -182,7 +182,7 @@ func (c Config) NewHost(code, id, name string) (*Host, error) {
 
 // Accept takes the joiner's message and returns the reply, which carries the host's confirmation. It charges
 // limiter for remote first, because the reply is one guess at the code, and refuses with ErrLocked or ErrBurned
-// when that remote may not be served. IPv6 remotes share a limit on their /64; the key is the IP, not the port.
+// when that remote may not be served. Global IPv6 remotes share a limit on their /64 and link-local ones on their interface; the key is never the port.
 // The run is unconfirmed until Finish verifies the joiner's answer.
 func (h *Host) Accept(joinerMsg []byte, limiter *Limiter, remote string, now time.Time) ([]byte, error) {
 	if h.s == nil || h.accepted {

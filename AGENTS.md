@@ -32,7 +32,7 @@ cannot resolve that check from PATH.
   `Validate`; the package does not decide how long a code lives.
 - `Limiter` holds its own mutex and knows nothing about codes, sessions or clocks it does not receive. `now` is a
   parameter so a test can move time without sleeping, and `Charge` checks and counts under one lock so runs racing
-  each other cannot jointly pass the limit. Remotes are keyed by IP, with IPv6 grouped by /64.
+  each other cannot jointly pass the limit. Remotes are keyed by IP: global IPv6 grouped by /64, link-local IPv6 by interface (zone).
 - `Limiter.Refund` never shortens a lockout and never drives a count below zero. A refund belongs to a success; it
   cannot undo a lockout another guess earned.
 - Nothing here touches a socket, a file, or a global. The package has no `init`, no package-level mutable state, and
