@@ -16,3 +16,6 @@ done
 
 compile_native_go_fuzzer github.com/Totative/go-codepair FuzzNormalizeIsIdempotent fuzz_normalize_is_idempotent
 compile_native_go_fuzzer github.com/Totative/go-codepair FuzzMessages fuzz_messages
+compile_native_go_fuzzer github.com/Totative/go-codepair FuzzRemoteKey fuzz_remote_key
+compile_native_go_fuzzer github.com/Totative/go-codepair FuzzScalarMultVfy fuzz_scalar_mult_vfy
+compile_native_go_fuzzer github.com/Totative/go-codepair FuzzSplitPair fuzz_split_pair
