@@ -1,6 +1,7 @@
 package codepair
 
 import (
+	"net"
 	"strings"
 	"testing"
 	"time"
@@ -117,6 +118,57 @@ func FuzzNormalizeIsIdempotent(f *testing.F) {
 		once := Normalize(code)
 		if twice := Normalize(once); twice != once {
 			t.Fatalf("Normalize(%q) = %q, then %q", code, once, twice)
+		}
+	})
+}
+
+func FuzzRemoteKey(f *testing.F) {
+	for _, s := range []string{
+		"192.0.2.9:443",
+		"192.0.2.9",
+		"2001:db8:0:1::1",
+		"[2001:db8:0:1::2]:9",
+		"2001:db8:0:2::1",
+		"not-an-address",
+		"",
+		"[::1]:80",
+		"::ffff:192.0.2.9",
+	} {
+		f.Add(s)
+	}
+	f.Fuzz(func(t *testing.T, remote string) {
+		key := remoteKey(remote)
+		if key != remoteKey(remote) {
+			t.Fatalf("remoteKey(%q) is not deterministic", remote)
+		}
+		host, _, err := net.SplitHostPort(remote)
+		if err == nil {
+			if ip := net.ParseIP(host); ip != nil && remoteKey(host) != key {
+				t.Fatalf("remoteKey(%q) = %q, remoteKey(%q) = %q", remote, key, host, remoteKey(host))
+			}
+		}
+		ip := net.ParseIP(remote)
+		if ip == nil {
+			if err != nil && key != remote {
+				t.Fatalf("non-address %q -> %q", remote, key)
+			}
+			return
+		}
+		if v4 := ip.To4(); v4 != nil {
+			if key != v4.String() {
+				t.Fatalf("IPv4 %q -> %q, want %q", remote, key, v4.String())
+			}
+			return
+		}
+		masked := ip.Mask(net.CIDRMask(64, 128)).String()
+		if key != masked {
+			t.Fatalf("IPv6 %q -> %q, want /64 %q", remote, key, masked)
+		}
+		other := make(net.IP, 16)
+		copy(other, ip.To16()[:8])
+		other[15] = 1
+		if remoteKey(other.String()) != key {
+			t.Fatalf("/64 grouping failed for %q -> %q", remote, key)
 		}
 	})
 }
@@ -271,6 +323,26 @@ func TestRevLimiterStrayRefund(t *testing.T) {
 	if !burned || !still {
 		t.Fatalf("burned before stray refund = %v, after = %v", burned, still)
 	}
+
+	// A second refund after charged is already zero must not decrement the global
+	// count another remote still owns.
+	extra, err := NewLimiter(10, 3, time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	extra.Charge("a", now)
+	extra.Charge("b", now)
+	extra.Refund("a", now)
+	extra.Refund("a", now)
+	if _, burned := extra.Charge("c", now); burned {
+		t.Fatal("c burned after a double refund of a")
+	}
+	if _, burned := extra.Charge("d", now); burned {
+		t.Fatal("d burned after a double refund of a")
+	}
+	if _, burned := extra.Charge("e", now); !burned {
+		t.Fatal("a second refund of a gave a guess back to the global count")
+	}
 }
 
 func TestRevLimiterRejectsNonPositive(t *testing.T) {
@@ -283,5 +355,29 @@ func TestRevLimiterRejectsNonPositive(t *testing.T) {
 	}
 	if _, err := NewLimiter(3, 5, 0); err == nil {
 		t.Fatal("NewLimiter(3, 5, 0) succeeded")
+	}
+	now := time.Now()
+	floor, err := NewLimiter(1, 1, time.Nanosecond)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if locked, burned := floor.Charge("a", now); locked || burned {
+		t.Fatal("first charge at the unit bounds was refused")
+	}
+	if _, burned := floor.Charge("b", now); !burned {
+		t.Fatal("burnFailures=1 did not burn on the second remote")
+	}
+	lock, err := NewLimiter(1, 5, time.Nanosecond)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if locked, burned := lock.Charge("a", now); locked || burned {
+		t.Fatal("first charge with a 1ns lockout was refused")
+	}
+	if locked, _ := lock.Charge("a", now); !locked {
+		t.Fatal("maxFailures=1 did not lock")
+	}
+	if locked, _ := lock.Charge("a", now.Add(time.Nanosecond)); locked {
+		t.Fatal("a 1ns lockout had not expired")
 	}
 }
