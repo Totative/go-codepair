@@ -122,61 +122,6 @@ func FuzzNormalizeIsIdempotent(f *testing.F) {
 	})
 }
 
-func FuzzRemoteKey(f *testing.F) {
-	for _, s := range []string{
-		"192.0.2.9:443",
-		"192.0.2.9",
-		"2001:db8:0:1::1",
-		"[2001:db8:0:1::2]:9",
-		"2001:db8:0:2::1",
-		"not-an-address",
-		"",
-		"[::1]:80",
-		"::ffff:192.0.2.9",
-	} {
-		f.Add(s)
-	}
-	f.Fuzz(func(t *testing.T, remote string) {
-		key := remoteKey(remote)
-		if key != remoteKey(remote) {
-			t.Fatalf("remoteKey(%q) is not deterministic", remote)
-		}
-		host, _, err := net.SplitHostPort(remote)
-		if err == nil {
-			if ip := net.ParseIP(strings.SplitN(host, "%", 2)[0]); ip != nil && remoteKey(host) != key {
-				t.Fatalf("remoteKey(%q) = %q, remoteKey(%q) = %q", remote, key, host, remoteKey(host))
-			}
-		} else {
-			host = remote
-		}
-		// The property reads an address the way remoteKey does, zone included: a zone
-		// names an interface on one host, so it cannot change the bucket.
-		ip := net.ParseIP(strings.SplitN(host, "%", 2)[0])
-		if ip == nil {
-			if key != remote {
-				t.Fatalf("non-address %q -> %q", remote, key)
-			}
-			return
-		}
-		if v4 := ip.To4(); v4 != nil {
-			if key != v4.String() {
-				t.Fatalf("IPv4 %q -> %q, want %q", remote, key, v4.String())
-			}
-			return
-		}
-		masked := ip.Mask(net.CIDRMask(64, 128)).String()
-		if key != masked {
-			t.Fatalf("IPv6 %q -> %q, want /64 %q", remote, key, masked)
-		}
-		other := make(net.IP, 16)
-		copy(other, ip.To16()[:8])
-		other[15] = 1
-		if remoteKey(other.String()) != key {
-			t.Fatalf("/64 grouping failed for %q -> %q", remote, key)
-		}
-	})
-}
-
 func TestLimiterKeysRemotesByIP(t *testing.T) {
 	t.Parallel()
 	now := time.Now()
@@ -258,6 +203,11 @@ func FuzzRemoteKey(f *testing.F) {
 		"fe80::1%wlan0",
 		"fe80::1",
 		"not-an-ip",
+		"192.0.2.9",
+		"2001:db8:0:2::1",
+		"",
+		"[::1]:80",
+		"::ffff:192.0.2.9",
 	} {
 		f.Add(s)
 	}
