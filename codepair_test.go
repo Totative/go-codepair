@@ -164,8 +164,10 @@ func FuzzRemoteKey(f *testing.F) {
 		if key != masked {
 			t.Fatalf("IPv6 %q -> %q, want /64 %q", remote, key, masked)
 		}
-		other := append(ip.To16()[:8:8], 0, 0, 0, 0, 0, 0, 0, 1)
-		if remoteKey(net.IP(other).String()) != key {
+		other := make(net.IP, 16)
+		copy(other, ip.To16()[:8])
+		other[15] = 1
+		if remoteKey(other.String()) != key {
 			t.Fatalf("/64 grouping failed for %q -> %q", remote, key)
 		}
 	})
