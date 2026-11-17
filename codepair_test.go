@@ -143,13 +143,17 @@ func FuzzRemoteKey(f *testing.F) {
 		}
 		host, _, err := net.SplitHostPort(remote)
 		if err == nil {
-			if ip := net.ParseIP(host); ip != nil && remoteKey(host) != key {
+			if ip := net.ParseIP(strings.SplitN(host, "%", 2)[0]); ip != nil && remoteKey(host) != key {
 				t.Fatalf("remoteKey(%q) = %q, remoteKey(%q) = %q", remote, key, host, remoteKey(host))
 			}
+		} else {
+			host = remote
 		}
-		ip := net.ParseIP(remote)
+		// The property reads an address the way remoteKey does, zone included: a zone
+		// names an interface on one host, so it cannot change the bucket.
+		ip := net.ParseIP(strings.SplitN(host, "%", 2)[0])
 		if ip == nil {
-			if err != nil && key != remote {
+			if key != remote {
 				t.Fatalf("non-address %q -> %q", remote, key)
 			}
 			return
