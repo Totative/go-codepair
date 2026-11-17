@@ -46,9 +46,9 @@ func NewLimiter(maxFailures, burnFailures int, lockout time.Duration) (*Limiter,
 // Charge records one guess from remote and reports whether the guess may be served. locked means remote is inside a
 // lockout; burned means the guesses failed in all have spent burnFailures, and the caller should drop the code.
 // Either way nothing is counted and the guess must be refused. Checking and counting happen under one lock, so
-// concurrent runs cannot jointly pass the limit. Remotes are keyed by IP, with IPv6 grouped by /64, so a limit per
-// remote holds only as far as an attacker cannot choose an address, and the global count is the bound that does not
-// depend on that.
+// concurrent runs cannot jointly pass the limit. Remotes are keyed by IP, with global IPv6 grouped by /64 and
+// link-local IPv6 by address and zone, so a limit per remote holds only as far as an attacker cannot choose an
+// address, and the global count is the bound that does not depend on that.
 func (l *Limiter) Charge(remote string, now time.Time) (locked, burned bool) {
 	remote = remoteKey(remote)
 	l.mu.Lock()
@@ -97,20 +97,30 @@ func (l *Limiter) Refund(remote string, now time.Time) {
 	l.failures = max(0, l.failures-1)
 }
 
-// remoteKey is the limiter's identity for a peer: the IP, IPv6 masked to /64. A host:port is reduced to the IP so
-// two ports on one computer share the budget. A string that is not an address is kept as given.
+// remoteKey is the limiter's identity for a peer: the IP, global IPv6 masked to /64, link-local IPv6 as the address
+// and zone. A host:port is reduced to the IP so two ports on one computer share the budget. A string that is not an
+// address is kept as given.
 func remoteKey(remote string) string {
 	host := remote
 	if h, _, err := net.SplitHostPort(remote); err == nil {
 		host = h
 	}
 	// A link-local address carries a zone, which ParseIP rejects.
-	ip := net.ParseIP(strings.SplitN(host, "%", 2)[0])
+	addr, zone, _ := strings.Cut(host, "%")
+	ip := net.ParseIP(addr)
 	if ip == nil {
 		return remote
 	}
 	if v4 := ip.To4(); v4 != nil {
 		return v4.String()
+	}
+	if ip.IsLinkLocalUnicast() {
+		// Typical link-local unicast is fe80::/64, so a prefix mask plus a dropped zone is every peer on every link.
+		key := ip.String()
+		if zone != "" {
+			return key + "%" + zone
+		}
+		return key
 	}
 	return ip.Mask(net.CIDRMask(64, 128)).String()
 }

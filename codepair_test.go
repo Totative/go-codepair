@@ -215,6 +215,92 @@ func TestLimiterKeysRemotesByIP(t *testing.T) {
 	}
 }
 
+func TestRemoteKey(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name string
+		a, b string
+		same bool
+	}{
+		{"IPv4 ports", "192.0.2.9:443", "192.0.2.9", true},
+		{"IPv6 /64", "2001:db8:0:1::1", "[2001:db8:0:1::2]:9", true},
+		{"IPv6 other /64", "2001:db8:0:1::1", "2001:db8:0:2::1", false},
+		{"link-local ports", "[fe80::1%eth0]:1001", "[fe80::1%eth0]:1002", true},
+		{"link-local other addr", "fe80::1%eth0", "fe80::2%eth0", false},
+		{"link-local other zone", "fe80::1%eth0", "fe80::1%wlan0", false},
+		{"link-local unzoned", "fe80::1", "fe80::2", false},
+		{"link-local zone vs none", "fe80::1", "fe80::1%eth0", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			ka, kb := remoteKey(tc.a), remoteKey(tc.b)
+			if tc.same {
+				if ka != kb {
+					t.Fatalf("remoteKey(%q) = %q, remoteKey(%q) = %q, want equal", tc.a, ka, tc.b, kb)
+				}
+				return
+			}
+			if ka == kb {
+				t.Fatalf("remoteKey(%q) = remoteKey(%q) = %q, want distinct", tc.a, tc.b, ka)
+			}
+		})
+	}
+}
+
+func FuzzRemoteKey(f *testing.F) {
+	for _, s := range []string{
+		"192.0.2.1:443",
+		"2001:db8:0:1::1",
+		"[2001:db8:0:1::2]:9",
+		"fe80::1%eth0",
+		"[fe80::1%eth0]:1001",
+		"fe80::2%eth0",
+		"fe80::1%wlan0",
+		"fe80::1",
+		"not-an-ip",
+	} {
+		f.Add(s)
+	}
+	f.Fuzz(func(t *testing.T, remote string) {
+		got := remoteKey(remote)
+		host := remote
+		if h, _, err := net.SplitHostPort(remote); err == nil {
+			host = h
+			if k := remoteKey(host); k != got {
+				t.Fatalf("remoteKey(%q) = %q, remoteKey(%q) = %q", remote, got, host, k)
+			}
+		}
+		addr, zone, _ := strings.Cut(host, "%")
+		ip := net.ParseIP(addr)
+		if ip == nil {
+			if got != remote {
+				t.Fatalf("remoteKey(%q) = %q, want the original string", remote, got)
+			}
+			return
+		}
+		if v4 := ip.To4(); v4 != nil {
+			if got != v4.String() {
+				t.Fatalf("remoteKey(%q) = %q, want %q", remote, got, v4.String())
+			}
+			return
+		}
+		if ip.IsLinkLocalUnicast() {
+			want := ip.String()
+			if zone != "" {
+				want += "%" + zone
+			}
+			if got != want {
+				t.Fatalf("remoteKey(%q) = %q, want %q", remote, got, want)
+			}
+			return
+		}
+		want := ip.Mask(net.CIDRMask(64, 128)).String()
+		if got != want {
+			t.Fatalf("remoteKey(%q) = %q, want %q", remote, got, want)
+		}
+	})
+}
+
 func TestLimiterLocksOutOneRemote(t *testing.T) {
 	t.Parallel()
 	now := time.Now()
