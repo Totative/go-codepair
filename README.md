@@ -34,8 +34,8 @@ A worked example and the contracts: [HUMANS.md](HUMANS.md).
 - Peer key: the long-term key is HKDF-SHA-512 of the exchange's session key, so it never depends on a guessable value.
 - Rate limiting: `NewLimiter` returns an error unless its bounds are positive. `Host.Accept` charges a `Limiter`
   once per run, locks a remote out after a set number of failures, and reports when failures in all have reached
-  the point where the caller should drop the code. Remotes are identified by IP only, IPv6 by /64, so users who
-  share a NAT share that limit.
+  the point where the caller should drop the code. Remotes are identified by IP only (global IPv6 by /64, link-local IPv6 by interface), so users who
+  share a NAT or a link share that limit.
 
 ## Documentation
 
