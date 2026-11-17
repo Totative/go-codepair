@@ -3,6 +3,7 @@ package codepair
 import (
 	"errors"
 	"net"
+	"strings"
 	"sync"
 	"time"
 )
@@ -103,7 +104,8 @@ func remoteKey(remote string) string {
 	if h, _, err := net.SplitHostPort(remote); err == nil {
 		host = h
 	}
-	ip := net.ParseIP(host)
+	// A link-local address carries a zone, which ParseIP rejects.
+	ip := net.ParseIP(strings.SplitN(host, "%", 2)[0])
 	if ip == nil {
 		return remote
 	}

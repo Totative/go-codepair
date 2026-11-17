@@ -183,3 +183,17 @@ func TestAcceptRefusesRemoteOverLimit(t *testing.T) {
 		t.Fatalf("same IP on another port = %v, want ErrLocked", err)
 	}
 }
+
+func TestLimiterZonedIPv6SharesBudgetAcrossPorts(t *testing.T) {
+	t.Parallel()
+	l, err := NewLimiter(2, 100, time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now()
+	l.Charge("[fe80::1%eth0]:1001", now)
+	l.Charge("[fe80::1%eth0]:1002", now)
+	if locked, _ := l.Charge("[fe80::1%eth0]:1003", now); !locked {
+		t.Fatal("a link-local remote escaped its lockout by changing source port")
+	}
+}
