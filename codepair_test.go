@@ -1,6 +1,7 @@
 package codepair
 
 import (
+	"net"
 	"strings"
 	"testing"
 	"time"
@@ -117,6 +118,55 @@ func FuzzNormalizeIsIdempotent(f *testing.F) {
 		once := Normalize(code)
 		if twice := Normalize(once); twice != once {
 			t.Fatalf("Normalize(%q) = %q, then %q", code, once, twice)
+		}
+	})
+}
+
+func FuzzRemoteKey(f *testing.F) {
+	for _, s := range []string{
+		"192.0.2.9:443",
+		"192.0.2.9",
+		"2001:db8:0:1::1",
+		"[2001:db8:0:1::2]:9",
+		"2001:db8:0:2::1",
+		"not-an-address",
+		"",
+		"[::1]:80",
+		"::ffff:192.0.2.9",
+	} {
+		f.Add(s)
+	}
+	f.Fuzz(func(t *testing.T, remote string) {
+		key := remoteKey(remote)
+		if key != remoteKey(remote) {
+			t.Fatalf("remoteKey(%q) is not deterministic", remote)
+		}
+		host, _, err := net.SplitHostPort(remote)
+		if err == nil {
+			if ip := net.ParseIP(host); ip != nil && remoteKey(host) != key {
+				t.Fatalf("remoteKey(%q) = %q, remoteKey(%q) = %q", remote, key, host, remoteKey(host))
+			}
+		}
+		ip := net.ParseIP(remote)
+		if ip == nil {
+			if err != nil && key != remote {
+				t.Fatalf("non-address %q -> %q", remote, key)
+			}
+			return
+		}
+		if v4 := ip.To4(); v4 != nil {
+			if key != v4.String() {
+				t.Fatalf("IPv4 %q -> %q, want %q", remote, key, v4.String())
+			}
+			return
+		}
+		masked := ip.Mask(net.CIDRMask(64, 128)).String()
+		if key != masked {
+			t.Fatalf("IPv6 %q -> %q, want /64 %q", remote, key, masked)
+		}
+		other := append(ip.To16()[:8:8], 0, 0, 0, 0, 0, 0, 0, 1)
+		if remoteKey(net.IP(other).String()) != key {
+			t.Fatalf("/64 grouping failed for %q -> %q", remote, key)
 		}
 	})
 }

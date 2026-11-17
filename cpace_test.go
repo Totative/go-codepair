@@ -134,6 +134,45 @@ func TestCFRGScalarMultVectors(t *testing.T) {
 	}
 }
 
+func FuzzScalarMultVfy(f *testing.F) {
+	valid, err := hex.DecodeString("2c3c6b8c4f3800e7aef6864025b4ed79bd599117e427c41bd47d93d654b4a51c")
+	if err != nil {
+		f.Fatal(err)
+	}
+	invalid, err := hex.DecodeString("2b3c6b8c4f3800e7aef6864025b4ed79bd599117e427c41bd47d93d654b4a51c")
+	if err != nil {
+		f.Fatal(err)
+	}
+	scalarBytes, err := hex.DecodeString("7cd0e075fa7955ba52c02759a6c90dbbfc10e6d40aea8d283e407d88cf538a05")
+	if err != nil {
+		f.Fatal(err)
+	}
+	f.Add(valid)
+	f.Add(invalid)
+	f.Add(make([]byte, elemSize))
+	f.Add(make([]byte, elemSize-1))
+	f.Add([]byte{})
+	s, err := new(ristretto255.Scalar).SetCanonicalBytes(scalarBytes)
+	if err != nil {
+		f.Fatal(err)
+	}
+	f.Fuzz(func(t *testing.T, point []byte) {
+		got, err := scalarMultVfy(s, point)
+		if err != nil {
+			if !errors.Is(err, ErrMessage) {
+				t.Fatalf("err = %v, want ErrMessage", err)
+			}
+			return
+		}
+		if len(got) != elemSize {
+			t.Fatalf("K length %d, want %d", len(got), elemSize)
+		}
+		if bytes.Equal(got, make([]byte, elemSize)) {
+			t.Fatal("identity K")
+		}
+	})
+}
+
 func TestSplitLVIsCanonical(t *testing.T) {
 	t.Parallel()
 	if _, _, err := splitPair(lvCat([]byte("a"), []byte("b"))); err != nil {
@@ -149,6 +188,38 @@ func TestSplitLVIsCanonical(t *testing.T) {
 			t.Errorf("%s accepted", name)
 		}
 	}
+}
+
+func FuzzSplitPair(f *testing.F) {
+	f.Add(lvCat([]byte("a"), []byte("b")))
+	f.Add(lvCat([]byte("id"), []byte("name")))
+	f.Add(lvCat([]byte("ADa"), []byte("ADb")))
+	f.Add(lvCat([]byte("1234"), []byte("5")))
+	f.Add(lvCat(nil, nil))
+	f.Add([]byte{})
+	f.Add([]byte{0x81, 0x00, 'a', 0x00})
+	f.Add([]byte{0x05, 'a', 0x00})
+	long := make([]byte, 128)
+	for i := range long {
+		long[i] = byte(i)
+	}
+	f.Add(lvCat(long, []byte("x")))
+	f.Fuzz(func(t *testing.T, b []byte) {
+		first, second, err := splitPair(b)
+		if err != nil {
+			if !errors.Is(err, ErrMessage) {
+				t.Fatalf("err = %v, want ErrMessage", err)
+			}
+			return
+		}
+		enc := lvCat(first, second)
+		if !bytes.Equal(enc, b) {
+			t.Fatalf("non-canonical encoding accepted: in=%x out=%x", b, enc)
+		}
+		if len(first)+len(second) > len(b) {
+			t.Fatalf("fields longer than input: %d+%d > %d", len(first), len(second), len(b))
+		}
+	})
 }
 
 // run drives a full exchange and returns both sides' results.
@@ -443,8 +514,13 @@ func TestHandshakesAreSingleUse(t *testing.T) {
 
 func FuzzMessages(f *testing.F) {
 	_, msgA, _ := testConfig.NewJoiner("ABCD2345", "j", "J")
+	host, _ := testConfig.NewHost("ABCD2345", "h", "H")
+	msgB, _ := hostAccept(host, msgA)
 	f.Add(msgA)
+	f.Add(msgB)
 	f.Add([]byte{})
+	f.Add(make([]byte, 5))
+	f.Add(slices.Concat(make([]byte, elemSize), lvCat([]byte("id"), []byte("name"))))
 	f.Fuzz(func(t *testing.T, msg []byte) {
 		host, _ := testConfig.NewHost("ABCD2345", "h", "H")
 		if reply, err := hostAccept(host, msg); err == nil && len(reply) < elemSize+tagSize {
