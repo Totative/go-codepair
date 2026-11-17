@@ -46,7 +46,6 @@ func checkPeerAD(id, name []byte) error {
 // protocol derives another generator and fails confirmation.
 type session struct {
 	cfg Config
-	g   *ristretto255.Element
 	y   *ristretto255.Scalar
 	ya  []byte
 	ad  []byte
@@ -83,7 +82,6 @@ func (c Config) newSession(code, id, name string) (*session, error) {
 	}
 	return &session{
 		cfg: c,
-		g:   g,
 		y:   y,
 		ya:  new(ristretto255.Element).ScalarMult(y, g).Bytes(),
 		ad:  lvCat([]byte(id), []byte(name)),
