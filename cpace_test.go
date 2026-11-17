@@ -383,6 +383,26 @@ func TestInvalidMessagesAreRejected(t *testing.T) {
 			t.Errorf("joiner %s: err = %v", name, err)
 		}
 	}
+
+	_, otherMsg, err := testConfig.NewJoiner("ABCD2345", "o", "O")
+	if err != nil {
+		t.Fatal(err)
+	}
+	point := otherMsg[:elemSize]
+	for _, n := range []int{elemSize + tagSize, maxPairingMessage} {
+		joiner, _, err := testConfig.NewJoiner("ABCD2345", "j", "J")
+		if err != nil {
+			t.Fatal(err)
+		}
+		msg := make([]byte, n)
+		copy(msg, point)
+		if _, _, err := joiner.Finish(msg); !errors.Is(err, ErrConfirmation) {
+			t.Fatalf("Finish(%d bytes) = %v, want ErrConfirmation", n, err)
+		}
+		if _, _, err := joiner.Finish(msg); !errors.Is(err, errUsed) {
+			t.Fatalf("Finish(%d bytes) did not spend the joiner: %v", n, err)
+		}
+	}
 }
 
 func TestTamperedIdentityFailsConfirmation(t *testing.T) {

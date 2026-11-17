@@ -10,7 +10,7 @@ import (
 
 func TestRevWeakCodeAccepted(t *testing.T) {
 	t.Parallel()
-	for _, code := range []string{"", "1", "----", "not in alphabet at all"} {
+	for _, code := range []string{"", "1", "----", "not in alphabet at all", "IIIIIIII", "ABCD234I"} {
 		if _, err := testConfig.NewHost(code, "h", "H"); !errors.Is(err, ErrCode) {
 			t.Errorf("NewHost(%q) = %v, want ErrCode", code, err)
 		}
@@ -68,6 +68,32 @@ func TestRevADBounds(t *testing.T) {
 	}
 	if _, _, err := testConfig.NewJoiner("ABCD2345", "", "J"); err == nil {
 		t.Error("NewJoiner accepted an empty id")
+	}
+
+	id256 := strings.Repeat("x", maxADField)
+	name256 := strings.Repeat("y", maxADField)
+	joiner, msgA, err := testConfig.NewJoiner("ABCD2345", id256, name256)
+	if err != nil {
+		t.Fatalf("NewJoiner(256-byte id and name) = %v", err)
+	}
+	host, err := testConfig.NewHost("ABCD2345", id256, name256)
+	if err != nil {
+		t.Fatalf("NewHost(256-byte id and name) = %v", err)
+	}
+	msgB, err := hostAccept(host, msgA)
+	if err != nil {
+		t.Fatalf("Accept(256-byte peer AD) = %v", err)
+	}
+	confirm, jp, err := joiner.Finish(msgB)
+	if err != nil {
+		t.Fatalf("Finish(256-byte peer AD) = %v", err)
+	}
+	hp, err := host.Finish(confirm)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if jp.PeerID != id256 || jp.PeerName != name256 || hp.PeerID != id256 || hp.PeerName != name256 {
+		t.Fatalf("256-byte identities: %+v %+v", jp, hp)
 	}
 
 	h, err := testConfig.NewHost("ABCD2345", "h", "H")
