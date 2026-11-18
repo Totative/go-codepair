@@ -12,11 +12,13 @@ concurrency:
 permissions: {}
 
 jobs:
+  # No contents: write in this job. It runs checkout, the build and attestation, and the
+  # token that can publish a release is deliberately not in scope while any of that happens.
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
-      contents: write
+      contents: read
       id-token: write
       attestations: write
     steps:
